@@ -1,28 +1,12 @@
 import cv2
 import numpy as np
 import functools
-
-tubecolors = np.array([
-    (40, 32, 53),  # empty 0
-    (234, 2, 50),  # red 1
-    (254, 206, 2), # yellow 2
-    (3, 127, 199), # blue 3
-    (7, 166, 3), # green 4
-    (255, 122, 1), # orange 5
-    (93, 42, 135), # purple 6
-    (179, 75, 46), # brown 7
-    (150, 203, 1), # light green 8
-    (45, 228, 210), # light blue 9
-    (246, 53, 220), # light purple 10
-    (211, 159, 122), # light brown 11
-    (0, 103, 60),  # dark green 12
-    (2, 67, 151),  # dark blue 13
-    (184, 207, 223), # white 14
-])[:,(2,1,0)]  #convert to BGR
+import os
+import time
 
 def get_init_state(filename):
     image = cv2.imread(filename)
-    resized_image = cv2.resize(image, (image.shape[1]//2, image.shape[0]//2))  # Resize if needed for easier processing
+    resized_image = cv2.resize(image, (image.shape[1]//2, image.shape[0]//2))  # Resize for easier processing
 
     gray = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
     _, binary_image = cv2.threshold(gray, 195, 255, cv2.THRESH_BINARY)
@@ -36,14 +20,20 @@ def get_init_state(filename):
     tuberects = sorted(tuberects, key = functools.cmp_to_key(tubesortcmp))
 
     indexes = []
+    tubecolors = np.array([(53, 32, 40)])
+
     for t in tuberects:
         for i in range(4):
             y = t[1] + i*t[3]//5 + t[3]//4
             x = t[0] + t[2]//2
             c = resized_image[y][x]
-            idx = np.argmin(np.sum((c-tubecolors)**2, axis=1))
+            d = np.sum((c-tubecolors)**2, axis=1)
+            idx = np.argmin(d)
+            if d[idx]>100:
+                idx = tubecolors.shape[0]
+                tubecolors = np.append(tubecolors, [c], axis=0)
             indexes.append(idx)
-    return indexes
+    return indexes, tuberects
 
 def print_state(s):
     print("---------------")
@@ -56,7 +46,7 @@ def find_solve(s, bt):
         if not (s[j*4] == s[j*4+1] == s[j*4+2] == s[j*4+3]):
             break
     else:
-        print("finish", bt)
+        #print("finish", bt)
         return True
     
     for j in range(N):
@@ -115,13 +105,50 @@ def find_solve(s, bt):
                 n[j*4+idx-k] = scolor
                 n[i*4+sidx+k] = 0
             
-            if find_solve(n, bt + [(i+1,j+1)]):
+            bt.append((i+1,j+1))
+            if find_solve(n, bt):
                 return True
-
+            bt.pop()
     return False
 
-#state = get_init_state("C:\\Users\\wyao\\Pictures\\Weixin Image_20240731161957.jpg")
-state = get_init_state("C:\\Users\\wyao\\Pictures\\Weixin Image_20240729101038.jpg")
-#state = get_init_state("C:\\Users\\wyao\\Pictures\\game1.jpg")
+def get_init_state_via_adb():
+    os.system("adb shell screencap /sdcard/screenshot.png")
+    os.system("adb pull /sdcard/screenshot.png screenshot.png")
+    state = get_init_state("screenshot.png")
+    os.remove("screenshot.png")
+    return state
+
+def perform_solve_via_adb(solve, rects):
+    for s in solve:
+
+        a = s[0]-1
+        r = rects[a]
+        x = r[0]*2 + r[2]
+        y = r[1]*2 + r[3]
+        print("from:", x, y)
+        os.system(f"adb shell input tap {x} {y}")
+        time.sleep(0.5)
+
+        b = s[1]-1
+        r = rects[b]
+        x = r[0]*2 + r[2]
+        y = r[1]*2 + r[3]
+        print("to  :", x*2, y*2)
+        os.system(f"adb shell input tap {x} {y}")
+        time.sleep(0.5)
+
+
+
+filename = "C:\\Users\\wyao\\Pictures\\Weixin Image_20241108172102.jpg"
+#filename = "C:\\Users\\wyao\\Pictures\\Weixin Image_20240731161957.jpg"
+#filename = "C:\\Users\\wyao\\Pictures\\Weixin Image_20240729101038.jpg"
+#filename = "C:\\Users\\wyao\\Pictures\\Weixin game1.jpg"
+
+#state, rects = get_init_state(filename)
+state, rects = get_init_state_via_adb()
+
 print_state(state)
-find_solve(state, [])
+solve = []
+find_solve(state, solve)
+print(solve)
+perform_solve_via_adb(solve, rects)
