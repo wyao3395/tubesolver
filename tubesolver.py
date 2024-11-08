@@ -1,6 +1,8 @@
-from PIL import Image
+import cv2
+import numpy as np
+import functools
 
-tubecolors = [
+tubecolors = np.array([
     (40, 32, 53),  # empty 0
     (234, 2, 50),  # red 1
     (254, 206, 2), # yellow 2
@@ -16,45 +18,32 @@ tubecolors = [
     (0, 103, 60),  # dark green 12
     (2, 67, 151),  # dark blue 13
     (184, 207, 223), # white 14
-]
-xaxis = {
-    3:[280*n+259 for n in range(4)],
-    4:[240*n+179 for n in range(4)],
-    5:[200*n+139 for n in range(5)],
-    6:[177*n+100 for n in range(6)]
-}
+])[:,(2,1,0)]  #convert to BGR
 
-yaxis = {
-    # 92n+off for n in range(4)
-    2:[822, 1374],
-    3:[554, 1054, 1554], 
-}
+def get_init_state(filename):
+    image = cv2.imread(filename)
+    resized_image = cv2.resize(image, (image.shape[1]//2, image.shape[0]//2))  # Resize if needed for easier processing
 
-def get_init_state(im, n):
-    colors = []
-    lines = len(n)
-    yoff = yaxis[lines]
-    for k in range(lines):
-        xoff = xaxis[n[k]]
-        for j in range(n[k]):
-            if k == lines-1 and j == n[k]-1:
-                continue
-            for i in range(4):
-                colors.append(im.getpixel((xoff[j], yoff[k]+92*i)))
-                    
-    indexes = []
-    for a in colors:
-        for i in range(15):
-            b  = tubecolors[i]
-            c = (a[0]-b[0])**2 +(a[1]-b[1])**2 + (a[2]-b[2])**2
-            if c < 100:
-                #print(a,b,c,i)
-                indexes.append(i)
-                break
+    gray = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
+    _, binary_image = cv2.threshold(gray, 195, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    tuberects  = [cv2.boundingRect(c) for c in contours if cv2.contourArea(c)>10000]
+    def tubesortcmp(a, b):
+        if abs(a[1]-b[1])<10:
+            return a[0]-b[0]
         else:
-            print("color not found")
+            return a[1]-b[1]
+    tuberects = sorted(tuberects, key = functools.cmp_to_key(tubesortcmp))
+
+    indexes = []
+    for t in tuberects:
+        for i in range(4):
+            y = t[1] + i*t[3]//5 + t[3]//4
+            x = t[0] + t[2]//2
+            c = resized_image[y][x]
+            idx = np.argmin(np.sum((c-tubecolors)**2, axis=1))
+            indexes.append(idx)
     return indexes
-            
 
 def print_state(s):
     print("---------------")
@@ -131,7 +120,8 @@ def find_solve(s, bt):
 
     return False
 
-im = Image.open("game1.jpg")
-state = get_init_state(im, [5,6,6])
+#state = get_init_state("C:\\Users\\wyao\\Pictures\\Weixin Image_20240731161957.jpg")
+state = get_init_state("C:\\Users\\wyao\\Pictures\\Weixin Image_20240729101038.jpg")
+#state = get_init_state("C:\\Users\\wyao\\Pictures\\game1.jpg")
 print_state(state)
 find_solve(state, [])
